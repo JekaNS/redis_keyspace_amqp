@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project version="4">
+  <component name="WebServers">
+    <option name="servers">
+      <webServer id="dd579c98-2f34-4b52-baa0-0fe7790a5ae8" name="redis_docker" url="http:///">
+        <fileTransfer host="localhost" port="2222" privateKey="$PROJECT_DIR$/rkea_docker/redis/ssh_host_rsa_key" accessType="SFTP" keyPair="true">
+          <option name="port" value="2222" />
+        </fileTransfer>
+      </webServer>
+    </option>
+  </component>
+</project>

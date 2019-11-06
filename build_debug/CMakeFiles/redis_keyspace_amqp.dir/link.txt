@@ -1,0 +1,1 @@
+/usr/bin/cc  -fPIC -g  -shared -Wl,-soname,libredis_keyspace_amqp.so -o libredis_keyspace_amqp.so CMakeFiles/redis_keyspace_amqp.dir/library.c.o 

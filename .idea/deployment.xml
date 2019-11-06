@@ -1,0 +1,20 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project version="4">
+  <component name="PublishConfigData" serverName="redis_docker">
+    <serverData>
+      <paths name="redis_docker">
+        <serverdata>
+          <mappings>
+            <mapping deploy="/home" local="$PROJECT_DIR$" web="/home" />
+          </mappings>
+          <excludedPaths>
+            <excludedPath local="true" path="$PROJECT_DIR$/dst_debug" />
+            <excludedPath local="true" path="$PROJECT_DIR$/./build_release" />
+            <excludedPath local="true" path="$PROJECT_DIR$/dst_release" />
+            <excludedPath local="true" path="$PROJECT_DIR$/./build_debug" />
+          </excludedPaths>
+        </serverdata>
+      </paths>
+    </serverData>
+  </component>
+</project>
