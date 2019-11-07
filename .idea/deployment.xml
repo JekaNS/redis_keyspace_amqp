@@ -5,10 +5,12 @@
       <paths name="Redis docker (dd579c98-2f34-4b52-baa0-0fe7790a5ae8)">
         <serverdata>
           <mappings>
-            <mapping deploy="/tmp/tmp.pa4l3fAnm4" local="$PROJECT_DIR$" />
+            <mapping deploy="/tmp/tmp.pa4l3fAnm4" local="$PROJECT_DIR$" web="/home" />
           </mappings>
           <excludedPaths>
             <excludedPath local="true" path="$PROJECT_DIR$/./build_release" />
+            <excludedPath path="/home/build_release" />
+            <excludedPath path="/home/build_debug" />
             <excludedPath local="true" path="$PROJECT_DIR$/./build_debug" />
           </excludedPaths>
         </serverdata>
