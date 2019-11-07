@@ -2,6 +2,8 @@ version: "2"
 services:
   redis:
     build: redis
+    volumes:
+      - ../:/home:cached
     ports:
       - '7000-7050:7000-7050'
       - '5000-5010:5000-5010'
@@ -15,6 +17,6 @@ services:
 #      MASTERS: 2
 #      SLAVES_PER_MASTER: 2
 
-#  rabbitmq:
-#    image: rabbitmq:3.7.3-management-alpine
-#    mem_limit: 300m
+  rabbitmq:
+    image: rabbitmq:3.7.3-management-alpine
+    mem_limit: 300m

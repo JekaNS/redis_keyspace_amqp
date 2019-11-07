@@ -5,7 +5,7 @@ ARG SSH_PORT=2222
 RUN apt-get update
 RUN LC_ALL=C.UTF-8 apt-get install -qqy apt-utils
 RUN LC_ALL=C.UTF-8 apt-get install -qqy software-properties-common curl dialog aptitude mc iputils-ping net-tools vim git zip unzip
-RUN LC_ALL=C.UTF-8 apt-get install -qqy openssh-server build-essential cmake gdb
+RUN LC_ALL=C.UTF-8 apt-get install -qqy openssh-server build-essential cmake gdb librabbitmq-dev
 
 RUN mkdir /root/.ssh
 RUN chmod 0700 /root/.ssh

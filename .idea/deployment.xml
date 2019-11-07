@@ -1,16 +1,14 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <project version="4">
-  <component name="PublishConfigData" serverName="redis_docker">
+  <component name="PublishConfigData" serverName="Redis docker (dd579c98-2f34-4b52-baa0-0fe7790a5ae8)">
     <serverData>
-      <paths name="redis_docker">
+      <paths name="Redis docker (dd579c98-2f34-4b52-baa0-0fe7790a5ae8)">
         <serverdata>
           <mappings>
-            <mapping deploy="/home" local="$PROJECT_DIR$" web="/home" />
+            <mapping deploy="/tmp/tmp.pa4l3fAnm4" local="$PROJECT_DIR$" />
           </mappings>
           <excludedPaths>
-            <excludedPath local="true" path="$PROJECT_DIR$/dst_debug" />
             <excludedPath local="true" path="$PROJECT_DIR$/./build_release" />
-            <excludedPath local="true" path="$PROJECT_DIR$/dst_release" />
             <excludedPath local="true" path="$PROJECT_DIR$/./build_debug" />
           </excludedPaths>
         </serverdata>
