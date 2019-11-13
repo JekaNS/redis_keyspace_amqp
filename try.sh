@@ -1,7 +1,6 @@
 #!/bin/bash
 
-redis-cli -p 7007 MODULE UNLOAD key_evt_amqp
-redis-cli -p 7007 MODULE LOAD /home/build_release/libredis_keyspace_amqp.so
-redis-cli -p 7007 keamqp.rand
-redis-cli -p 7007 keamqp.rand
+redis-cli MODULE LOAD ./cmake-build-debug/libredis_keyspace_amqp.dylib
+redis-cli keamqp.connect
+redis-cli SETEX test_key_name 1 "test_value"
 
