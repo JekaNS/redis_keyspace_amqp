@@ -1,22 +1,7 @@
 version: "2"
 services:
-  redis:
-    build: redis
-    volumes:
-      - ../:/home:cached
-    ports:
-      - '7000-7050:7000-7050'
-      - '5000-5010:5000-5010'
-      - '2222:2222'
-    mem_limit: 300m
-    environment:
-      IP: '0.0.0.0'
-      STANDALONE: 'true'
-      SENTINEL: 'false'
-#      INITIAL_PORT: 7000
-#      MASTERS: 2
-#      SLAVES_PER_MASTER: 2
-
   rabbitmq:
-    image: rabbitmq:latest
-    mem_limit: 300m
+    image: "rabbitmq:3-management"
+    ports:
+      - "5672:5672"
+      - "15672:15672"
