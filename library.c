@@ -18,14 +18,18 @@ amqp_socket_t *socket = NULL;
 amqp_basic_properties_t publish_props;
 int heardBeatTimerId = 0;
 
-char const *hostname = "127.0.0.1";
+char* hostname;
 int port = 5672;
-char const *username = "guest";
-char const *password = "guest";
+char* username;
+char* password;
+int heartbeat = 0;
+char* exchange;
+char* routing_key;
+uint8_t delivery_mode = 2;
 
 amqp_frame_t frame;
 struct timeval tval;
-struct timeval *tv;
+struct timeval* wait_frame_timeout;
 
 
 int amqpDisconnect(RedisModuleCtx *ctx) {
@@ -34,7 +38,7 @@ int amqpDisconnect(RedisModuleCtx *ctx) {
         return REDIS_AMQP_ERR;
     }
 
-    void **data;
+    void **data = NULL;
     if(heardBeatTimerId != 0) {
         RedisModule_StopTimer(ctx, heardBeatTimerId, data);
         heardBeatTimerId = 0;
@@ -51,45 +55,110 @@ int amqpDisconnect(RedisModuleCtx *ctx) {
     return REDIS_AMQP_OK;
 }
 
-void checkHeartbeat(RedisModuleCtx *ctx, void *data) {
+void checkFramesAndHeartbeat(RedisModuleCtx *ctx, void *data) {
+    heardBeatTimerId = 0;
+
     if(conn == NULL) {
         return;
     }
 
     int result;
-    result = amqp_simple_wait_frame_noblock(conn, &frame, tv);
+    result = amqp_simple_wait_frame_noblock(conn, &frame, wait_frame_timeout);
     if(result < 0 && result != AMQP_STATUS_TIMEOUT) {
+        //TODO manage reconnect
         amqpDisconnect(ctx);
         return;
     }
-    heardBeatTimerId = RedisModule_CreateTimer(ctx, 200, checkHeartbeat, ctx);
-
-    return;
+    heardBeatTimerId = RedisModule_CreateTimer(ctx, 200, checkFramesAndHeartbeat, ctx);
 }
 
-int amqpConnect(RedisModuleCtx *ctx, RedisModuleString **argv, int argc) {
+void initDefaultConfig() {
+    const char* h = "127.0.0.1";
+    const char* u = "guest";
+    const char* p = "guest";
+    const char* e = "amq.direct";
+    const char* r = "redis_keyspace_events";
 
-    size_t len;
+    hostname = RedisModule_Alloc(strlen(h) + 1);
+    strcpy(hostname,h);
 
+    username = RedisModule_Alloc(strlen(u) + 1);
+    strcpy(username,u);
 
-    for (int i = 1; i < argc; ++i) {
-        switch(i){
-            case 1:
-                hostname = RedisModule_StringPtrLen(argv[1], &len);
-                break;
-            case 2:
-                port = atoi(RedisModule_StringPtrLen(argv[2], &len));
-                break;
-            case 3:
-                username = RedisModule_StringPtrLen(argv[3], &len);
-                break;
-            case 4:
-                password = RedisModule_StringPtrLen(argv[4], &len);
-                break;
-            default:
-                break;
+    password = RedisModule_Alloc(strlen(p) + 1);
+    strcpy(password,p);
+
+    exchange = RedisModule_Alloc(strlen(e) + 1);
+    strcpy(exchange,e);
+
+    routing_key = RedisModule_Alloc(strlen(r) + 1);
+    strcpy(routing_key,r);
+}
+
+void initConfig(RedisModuleCtx *ctx, RedisModuleString **argv, int argc, int argOffset) {
+    if(argc - argOffset > 0) {
+        size_t len;
+        char **res = NULL;
+        char const *arg;
+        for (int i = 0; i < argc - argOffset; ++i) {
+            switch (i) {
+                case 0:
+                    RedisModule_Free(hostname);
+                    arg = RedisModule_StringPtrLen(argv[argOffset + i], &len);
+                    hostname = RedisModule_Alloc(len + 1);
+                    strcpy(hostname,arg);
+                    break;
+                case 1:
+                    port = (int)strtol(RedisModule_StringPtrLen(argv[argOffset + i], &len), res, 10);
+                    break;
+                case 2:
+                    RedisModule_Free(username);
+                    arg = RedisModule_StringPtrLen(argv[argOffset + i], &len);
+                    username = RedisModule_Alloc(len + 1);
+                    strcpy(username,arg);
+                    break;
+                case 3:
+                    RedisModule_Free(password);
+                    arg = RedisModule_StringPtrLen(argv[argOffset + i], &len);
+                    password = RedisModule_Alloc(len + 1);
+                    strcpy(password,arg);
+                    break;
+                case 4:
+                    heartbeat = (int)strtol(RedisModule_StringPtrLen(argv[argOffset + i], &len), res, 10);
+                    break;
+                case 5:
+                    RedisModule_Free(exchange);
+                    arg = RedisModule_StringPtrLen(argv[argOffset + i], &len);
+                    exchange = RedisModule_Alloc(len + 1);
+                    strcpy(exchange,arg);
+                    break;
+                case 6:
+                    RedisModule_Free(routing_key);
+                    arg = RedisModule_StringPtrLen(argv[argOffset + i], &len);
+                    routing_key = RedisModule_Alloc(len + 1);
+                    strcpy(routing_key,arg);
+                    break;
+                case 7:
+                    delivery_mode = (int)strtol(RedisModule_StringPtrLen(argv[argOffset + i], &len), res, 10);
+                    break;
+                default:
+                    break;
+            }
         }
+
+        publish_props._flags = AMQP_BASIC_CONTENT_TYPE_FLAG | AMQP_BASIC_DELIVERY_MODE_FLAG; // NOLINT(hicpp-signed-bitwise)
+        publish_props.content_type = amqp_cstring_bytes("text/plain");
+        publish_props.delivery_mode = delivery_mode; /* persistent delivery mode */
+
+        wait_frame_timeout = &tval;
+        wait_frame_timeout->tv_sec = 0;
+        wait_frame_timeout->tv_usec = 5;
+
+        RedisModule_Log(ctx, "notice", "MODULE CONFIG CHANGED");
     }
+}
+
+int amqpConnect(RedisModuleCtx *ctx) {
 
     if(conn != NULL) {
         amqpDisconnect(ctx);
@@ -98,10 +167,6 @@ int amqpConnect(RedisModuleCtx *ctx, RedisModuleString **argv, int argc) {
     if(conn == NULL) {
         conn = amqp_new_connection();
     }
-
-    publish_props._flags = AMQP_BASIC_CONTENT_TYPE_FLAG | AMQP_BASIC_DELIVERY_MODE_FLAG;
-    publish_props.content_type = amqp_cstring_bytes("text/plain");
-    publish_props.delivery_mode = 2; /* persistent delivery mode */
 
     socket = amqp_tcp_socket_new(conn);
     if (!socket) {
@@ -116,16 +181,11 @@ int amqpConnect(RedisModuleCtx *ctx, RedisModuleString **argv, int argc) {
 
     amqp_rpc_reply_t amqp_reply;
 
-    amqp_reply = amqp_login(conn, "/", 0, 131072, 5,AMQP_SASL_METHOD_PLAIN, username, password);
+    amqp_reply = amqp_login(conn, "/", 0, 131072, heartbeat,AMQP_SASL_METHOD_PLAIN, username, password);
     if(amqp_reply.reply_type != AMQP_RESPONSE_NORMAL) {
         amqpDisconnect(ctx);
         return REDIS_AMQP_AUTH_ERR;
     }
-
-    tv = &tval;
-    tv->tv_sec = 0;
-    tv->tv_usec = 100;
-    heardBeatTimerId = RedisModule_CreateTimer(ctx, 200, checkHeartbeat, ctx);
 
     amqp_channel_open(conn, 1);
 
@@ -135,13 +195,15 @@ int amqpConnect(RedisModuleCtx *ctx, RedisModuleString **argv, int argc) {
         return REDIS_AMQP_CHANNEL_ERR;
     }
 
+    heardBeatTimerId = RedisModule_CreateTimer(ctx, 500, checkFramesAndHeartbeat, ctx);
+
     RedisModule_Log(ctx, "notice", "AMQP CONNECTED");
     return REDIS_AMQP_OK;
 }
 
 int AmqpConnect_RedisCommand(RedisModuleCtx *ctx, RedisModuleString **argv, int argc) {
-
-    int amqrp_response = amqpConnect(ctx, argv, argc);
+    initConfig(ctx, argv, argc, 1);
+    int amqrp_response = amqpConnect(ctx);
     if(amqrp_response != REDIS_AMQP_OK) {
         char buffer[32];
         sprintf(buffer, "AMQP CONNECT ERROR: %d", amqrp_response);
@@ -154,6 +216,10 @@ int AmqpConnect_RedisCommand(RedisModuleCtx *ctx, RedisModuleString **argv, int 
 }
 
 int AmqpDisconnect_RedisCommand(RedisModuleCtx *ctx, RedisModuleString **argv, int argc) {
+    if(argc > 1) {
+        RedisModule_WrongArity(ctx);
+    }
+
     int amqrp_response = amqpDisconnect(ctx);
     if(amqrp_response != REDIS_AMQP_OK) {
         char buffer[32];
@@ -168,22 +234,23 @@ int AmqpDisconnect_RedisCommand(RedisModuleCtx *ctx, RedisModuleString **argv, i
 
 int isRedisMaster(RedisModuleCtx *ctx) {
     unsigned int res = RedisModule_GetContextFlags(ctx);
-    if(res & REDISMODULE_CTX_FLAGS_MASTER) {
+    if(res & REDISMODULE_CTX_FLAGS_MASTER) { // NOLINT(hicpp-signed-bitwise)
         return 1;
     }
     return 0;
 }
 
 int onKeyspaceEvent (RedisModuleCtx *ctx, int type, const char *event, RedisModuleString *key) {
+    //TODO save events when no connection or publish error
     if(isRedisMaster(ctx) == 1 && conn != NULL){
         size_t len;
         const char *keyname = RedisModule_StringPtrLen(key, &len);
         RedisModule_Log(ctx, "debug", "Keyspace Event : %i / %s / %s", type, event, keyname);
 
-        amqp_bytes_t exchange = amqp_cstring_bytes("amq.direct");
-        amqp_bytes_t routingKey = amqp_cstring_bytes("test_queue");
+        amqp_bytes_t exchangeName = amqp_cstring_bytes(exchange);
+        amqp_bytes_t routingKey = amqp_cstring_bytes(routing_key);
         amqp_bytes_t message = amqp_cstring_bytes(keyname);
-        int res = amqp_basic_publish(conn, 1, exchange, routingKey, 0, 0, &publish_props, message);
+        int res = amqp_basic_publish(conn, 1, exchangeName, routingKey, 0, 0, &publish_props, message);
         if(res < 0) {
             RedisModule_Log(ctx, "warning", "AMQP Publishing error %s",  amqp_error_string2(res));
         }
@@ -203,8 +270,10 @@ int RedisModule_OnLoad(RedisModuleCtx *ctx, RedisModuleString **argv, int argc) 
     if (RedisModule_CreateCommand(ctx, "key_evt_amqp.disconnect", AmqpDisconnect_RedisCommand, "readonly", 0, 0, 0) == REDISMODULE_ERR) {
         return REDISMODULE_ERR;
     }
+    initDefaultConfig();
+    initConfig(ctx, argv, argc, 0);
 
-    int res = RedisModule_SubscribeToKeyspaceEvents(ctx, REDISMODULE_NOTIFY_EXPIRED, onKeyspaceEvent);
+    RedisModule_SubscribeToKeyspaceEvents(ctx, REDISMODULE_NOTIFY_EXPIRED, onKeyspaceEvent); // NOLINT(hicpp-signed-bitwise)
 
     return REDISMODULE_OK;
 }
