@@ -1,3 +1,0 @@
-/home/build_debug/CMakeFiles/rebuild_cache.dir
-/home/build_debug/CMakeFiles/edit_cache.dir
-/home/build_debug/CMakeFiles/redis_keyspace_amqp.dir
