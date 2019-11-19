@@ -23,10 +23,10 @@ amqp_bytes_t routingKey; //routing key for AMQP publish
 
 mstime_t checkFrameInterval = 1000;
 
-bool operationalMode = false;
+bool amqpConnectionEnabled = false;
 RedisModuleString *storageRedisKeyName;
 
-void publishStoredEvents(RedisModuleCtx *ctx) {
+int publishStoredEvents(RedisModuleCtx *ctx) {
     //Send all messages from storage
     int res;
     size_t len;
@@ -44,12 +44,17 @@ void publishStoredEvents(RedisModuleCtx *ctx) {
         //Put message back into storage
         if (res != AMQP_STATUS_OK) {
             RedisModule_ListPush(storageList, REDISMODULE_LIST_HEAD, messageRedis);
-            break;
+            RedisModule_FreeString(ctx, messageRedis);
+            return REDISMODULE_ERR;
         }
         RedisModule_FreeString(ctx, messageRedis);
         messageRedis = RedisModule_ListPop(storageList, REDISMODULE_LIST_HEAD);
     }
+
+    RedisModule_DeleteKey(storageList);
     RedisModule_CloseKey(storageList);
+
+    return REDISMODULE_OK;
 }
 
 void pushEventToStorage(RedisModuleCtx *ctx, const char* messageString) {
@@ -94,7 +99,7 @@ void publishEvent(RedisModuleCtx *ctx, const char* event, const char* keyname) {
 void checkFramesAndHeartbeat(RedisModuleCtx *ctx, void* data) {
     heardBeatTimerId = 0;
 
-    if(!operationalMode) {
+    if(!amqpConnectionEnabled) {
         return;
     }
 
@@ -132,7 +137,7 @@ bool isRedisMaster(RedisModuleCtx *ctx) {
 }
 
 int onKeyspaceEvent (RedisModuleCtx *ctx, int type, const char *event, RedisModuleString *key) {
-    if(isRedisMaster(ctx) && operationalMode) {
+    if(isRedisMaster(ctx) && amqpConnectionEnabled) {
         if(heardBeatTimerId == 0) {
             amqpConnect(ctx, &conn, hostname, port, username, password, heartbeat);
             char* data = "";
@@ -195,6 +200,10 @@ int setupConfig(RedisModuleCtx *ctx, RedisModuleString **argv, int argc, int arg
                     }
                     publishProps.delivery_mode = delivery_mode;
                     break;
+                case 8:
+                    RedisModule_FreeString(ctx, storageRedisKeyName);
+                    storageRedisKeyName = RedisModule_CreateStringFromString(ctx, argv[argOffset + i]);
+                    break;
                 default:
                     break;
             }
@@ -231,7 +240,7 @@ int AmqpConnect_RedisCommand(RedisModuleCtx *ctx, RedisModuleString **argv, int 
     char* data = "";
     heardBeatTimerId = RedisModule_CreateTimer(ctx, checkFrameInterval, checkFramesAndHeartbeat, data);
 
-    operationalMode = true;
+    amqpConnectionEnabled = true;
 
     RedisModule_ReplyWithSimpleString(ctx,"AMQP CONNECT OK");
     return REDISMODULE_OK;
@@ -243,7 +252,7 @@ int AmqpDisconnect_RedisCommand(RedisModuleCtx *ctx, RedisModuleString **argv, i
         RedisModule_WrongArity(ctx);
     }
 
-    operationalMode = false;
+    amqpConnectionEnabled = false;
 
     if( heardBeatTimerId != 0) {
         void** data = NULL;
@@ -266,7 +275,7 @@ int AmqpDisconnect_RedisCommand(RedisModuleCtx *ctx, RedisModuleString **argv, i
 }
 
 int RedisModule_OnLoad(RedisModuleCtx *ctx, RedisModuleString **argv, int argc) {
-    if (RedisModule_Init(ctx,"key_evt_amqp",1,REDISMODULE_APIVER_1) != REDISMODULE_OK) {
+    if (RedisModule_Init(ctx,"key_evt_amqp",1, REDISMODULE_APIVER_1) != REDISMODULE_OK) {
         return REDISMODULE_ERR;
     }
 
@@ -282,7 +291,7 @@ int RedisModule_OnLoad(RedisModuleCtx *ctx, RedisModuleString **argv, int argc) 
         return REDISMODULE_ERR;
     }
 
-    operationalMode = true;
+    amqpConnectionEnabled = true;
 
     RedisModule_SubscribeToKeyspaceEvents(ctx, REDISMODULE_NOTIFY_EXPIRED, onKeyspaceEvent); // NOLINT(hicpp-signed-bitwise)
 
