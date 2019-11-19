@@ -40,9 +40,9 @@ void publishStoredEvents(RedisModuleCtx *ctx) {
 
     while(messageRedis != NULL) {
         messageTemp = RedisModule_StringPtrLen(messageRedis, &len);
-        res = amqpPublish(&conn, exchange, routingKey, &publishProps, messageTemp);
+        res = amqpPublish(ctx, &conn, exchange, routingKey, &publishProps, messageTemp);
         //Put message back into storage
-        if (res < AMQP_STATUS_OK) {
+        if (res != AMQP_STATUS_OK) {
             RedisModule_ListPush(storageList, REDISMODULE_LIST_HEAD, messageRedis);
             break;
         }
@@ -77,8 +77,8 @@ void publishEvent(RedisModuleCtx *ctx, const char* event, const char* keyname) {
     strcat(messageString, keyname);
 
     if(conn != NULL) {
-        res = amqpPublish(&conn, exchange, routingKey, &publishProps, messageString);
-        if (res < AMQP_STATUS_OK) {
+        res = amqpPublish(ctx, &conn, exchange, routingKey, &publishProps, messageString);
+        if (res != AMQP_STATUS_OK) {
             RedisModule_Log(ctx, "warning", "AMQP Publishing error: %s", amqp_error_string2(res));
             pushEventToStorage(ctx, messageString);
         } else {
@@ -101,18 +101,21 @@ void checkFramesAndHeartbeat(RedisModuleCtx *ctx, void* data) {
     int res;
 
     if(conn != NULL) {
-        res = amqpWaitFrame(&conn);
-        if(res < 0 && res != AMQP_STATUS_TIMEOUT) {
+        if(amqpWaitFrame(&conn) != AMQP_STATUS_OK) {
             amqpDisconnect(ctx, &conn);
             res = amqpConnect(ctx, &conn, hostname, port, username, password, heartbeat);
             if(res == REDIS_AMQP_OK) {
                 publishStoredEvents(ctx);
+            } else {
+                amqpDisconnect(ctx, &conn);
             }
         }
     } else {
         res = amqpConnect(ctx, &conn, hostname, port, username, password, heartbeat);
         if(res == REDIS_AMQP_OK) {
             publishStoredEvents(ctx);
+        } else {
+            amqpDisconnect(ctx, &conn);
         }
     }
 

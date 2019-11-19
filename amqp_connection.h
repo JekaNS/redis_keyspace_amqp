@@ -17,12 +17,11 @@
 #define REDIS_AMQP_AUTH_ERR 4
 #define REDIS_AMQP_CHANNEL_ERR 5
 #define REDIS_AMQP_ALREADY_CONNECTED 6
-#define REDIS_AMQP_CONNECTION_NOT_EXISTS -100
 
 int amqpWaitFrame(amqp_connection_state_t* conn);
 int amqpDisconnect(RedisModuleCtx *ctx, amqp_connection_state_t* conn);
 int amqpConnect(RedisModuleCtx *ctx, amqp_connection_state_t* conn, char* hostname, uint16_t port, char* username, char* password, uint heartbeat);
-int amqpPublish(amqp_connection_state_t* conn, amqp_bytes_t exchange, amqp_bytes_t routing_key, struct amqp_basic_properties_t_ const *properties,
+int amqpPublish(RedisModuleCtx *ctx, amqp_connection_state_t* conn, amqp_bytes_t exchange, amqp_bytes_t routing_key, struct amqp_basic_properties_t_ const *properties,
                 const char *body);
 
 #endif //REDIS_KEYSPACE_AMQP_AMQP_CONNECTION_H

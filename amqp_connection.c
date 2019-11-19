@@ -10,11 +10,24 @@
 #include <amqp.h>
 #include <amqp_tcp_socket.h>
 
-struct timeval waitFrameTimeout = { .tv_sec = 0, .tv_usec = 5 };
+struct timeval waitFrameTimeout = { .tv_sec = 0, .tv_usec = 0 };
 
 int amqpWaitFrame(amqp_connection_state_t* conn) {
-    amqp_frame_t tempFrame;
-    return amqp_simple_wait_frame_noblock(*conn, &tempFrame, &waitFrameTimeout);
+    int res;
+    amqp_frame_t frame;
+    do {
+        res = amqp_simple_wait_frame_noblock(*conn, &frame, &waitFrameTimeout);
+        if (AMQP_FRAME_METHOD == frame.frame_type && frame.payload.method.id == AMQP_CONNECTION_CLOSE_METHOD) {
+            amqp_send_method(*conn, frame.channel, AMQP_CONNECTION_CLOSE_OK_METHOD, NULL);
+            return AMQP_STATUS_CONNECTION_CLOSED;
+        }
+        if (AMQP_FRAME_METHOD == frame.frame_type && frame.payload.method.id == AMQP_CHANNEL_CLOSE_METHOD) {
+            amqp_send_method(*conn, frame.channel, AMQP_CHANNEL_CLOSE_OK_METHOD, NULL);
+            return AMQP_STATUS_CONNECTION_CLOSED;
+        }
+    } while(res != AMQP_STATUS_CONNECTION_CLOSED && res != AMQP_STATUS_TIMEOUT && frame.frame_type != 0 && frame.frame_type != AMQP_FRAME_HEARTBEAT);
+
+    return res != AMQP_STATUS_TIMEOUT ? res : AMQP_STATUS_OK;
 }
 
 int amqpDisconnect(RedisModuleCtx *ctx, amqp_connection_state_t* conn) {
@@ -70,11 +83,15 @@ int amqpConnect(RedisModuleCtx *ctx, amqp_connection_state_t* conn, char* hostna
     return REDIS_AMQP_OK;
 }
 
-int amqpPublish(amqp_connection_state_t* conn, amqp_bytes_t exchange, amqp_bytes_t routing_key, struct amqp_basic_properties_t_ const *properties,
+int amqpPublish(RedisModuleCtx *ctx, amqp_connection_state_t* conn, amqp_bytes_t exchange, amqp_bytes_t routing_key, struct amqp_basic_properties_t_ const *properties,
                 const char* body) {
     if(*conn != NULL) {
+        if(amqpWaitFrame(conn) != AMQP_STATUS_OK) {
+            amqpDisconnect(ctx, conn);
+            return AMQP_STATUS_CONNECTION_CLOSED;
+        }
         amqp_bytes_t amqpBody = amqp_cstring_bytes(body);
         return amqp_basic_publish(*conn, 1, exchange, routing_key, 0, 0, properties, amqpBody);
     }
-    return REDIS_AMQP_CONNECTION_NOT_EXISTS;
+    return AMQP_STATUS_CONNECTION_CLOSED;
 }
