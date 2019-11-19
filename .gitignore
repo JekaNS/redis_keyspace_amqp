@@ -1,1 +1,5 @@
 /cmake-build-*
+
+/debug_redis_cluster/700?/*.aof
+/debug_redis_cluster/700?/*.rdb
+/debug_redis_cluster/700?/nodes*
