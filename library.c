@@ -1,6 +1,7 @@
 
 #define REDISMODULE_EXPERIMENTAL_API
 
+#include "library.h"
 #include "redismodule.h"
 #include <stdlib.h>
 #include <string.h>
@@ -14,10 +15,10 @@ amqp_basic_properties_t publishProps;
 RedisModuleTimerID heardBeatTimerId;
 
 char* hostname = ""; //hostname for AMQP connection
-uint16_t port = 5672; //port for AMQP connection
+uint16_t port = DEFAULT_AMQP_PORT; //port for AMQP connection
 char* username = ""; //username for AMQP connection
 char* password = ""; //password for AMQP connection
-uint heartbeat = 30; //seconds
+uint heartbeat = DEFAULT_AMQP_HEARTBEAT; //seconds
 amqp_bytes_t exchange; //exchange name for AMQP publish
 amqp_bytes_t routingKey; //routing key for AMQP publish
 
@@ -25,6 +26,8 @@ mstime_t checkFrameInterval = 1000;
 
 bool amqpConnectionEnabled = false;
 RedisModuleString *storageRedisKeyName;
+
+string_array_t* keyMaskArr;
 
 int publishStoredEvents(RedisModuleCtx *ctx) {
     //Send all messages from storage
@@ -68,7 +71,7 @@ void pushEventToStorage(RedisModuleCtx *ctx, const char* messageString) {
 }
 
 /**
- * Publish event to AMQP or store them into Redis LIST storage
+ * Publish event to AMQP or store them into (LOCAL NODE!) Redis LIST storage
  * @param ctx
  * @param event
  * @param keyname
@@ -138,6 +141,7 @@ bool isRedisMaster(RedisModuleCtx *ctx) {
 
 int onKeyspaceEvent (RedisModuleCtx *ctx, int type, const char *event, RedisModuleString *key) {
     if(isRedisMaster(ctx) && amqpConnectionEnabled) {
+        //If there is a first event, then init AMQP connection and setup timer for connect/reconnect/heartbeat
         if(heardBeatTimerId == 0) {
             amqpConnect(ctx, &conn, hostname, port, username, password, heartbeat);
             char* data = "";
@@ -146,22 +150,36 @@ int onKeyspaceEvent (RedisModuleCtx *ctx, int type, const char *event, RedisModu
 
         size_t len;
         const char *keyname = RedisModule_StringPtrLen(key, &len);
-        RedisModule_Log(ctx, "debug", "Keyspace Event : %i / %s / %s", type, event, keyname);
 
-        publishEvent(ctx, event, keyname);
+        uint klen = stringArrayGetLength(&keyMaskArr);
+        for(uint i=0; i < klen; ++i) {
+            const char *mask = stringArrayGetElement(&keyMaskArr, i);
+            if(strcmp(mask, KEY_MASK_ALL) == 0) {
+                RedisModule_Log(ctx, "debug", "Keyspace Event (ALL): %i / %s / %s", type, event, keyname);
+                publishEvent(ctx, event, keyname);
+                return REDISMODULE_OK;
+            } else {
+                if(match(mask, keyname) == 1){
+                    RedisModule_Log(ctx, "debug", "Keyspace Event (%s): %i / %s / %s", mask, type, event, keyname);
+                    publishEvent(ctx, event, keyname);
+                    return REDISMODULE_OK;
+                }
+            }
+        }
     }
+
     return REDISMODULE_OK;
 }
 
 void setupDefaultConfig(RedisModuleCtx *ctx) {
-    copyStringAllocated("127.0.0.1", &hostname, false);
-    copyStringAllocated("guest", &username, false);
-    copyStringAllocated("guest", &password, false);
+    copyStringAllocated(DEFAULT_AMQP_HOST, &hostname, false);
+    copyStringAllocated(DEFAULT_AMQP_USER, &username, false);
+    copyStringAllocated(DEFAULT_AMQP_PASS, &password, false);
 
-    copyAmqpStringAllocated("amq.direct", &exchange, false);
-    copyAmqpStringAllocated("redis_keyspace_events", &routingKey, false);
+    copyAmqpStringAllocated(DEFAULT_AMQP_EXCHANGE, &exchange, false);
+    copyAmqpStringAllocated(DEFAULT_AMQP_ROUTINGKEY, &routingKey, false);
 
-    storageRedisKeyName = RedisModule_CreateString(ctx, "key_evt_amqp", 12);
+    storageRedisKeyName = RedisModule_CreateString(ctx, DEFAULT_FALLBACK_STORAGE_KEY, strlen(DEFAULT_FALLBACK_STORAGE_KEY));
 }
 
 int setupConfig(RedisModuleCtx *ctx, RedisModuleString **argv, int argc, int argOffset) {
@@ -169,7 +187,10 @@ int setupConfig(RedisModuleCtx *ctx, RedisModuleString **argv, int argc, int arg
         size_t len;
         char **rest = NULL;
         uint8_t delivery_mode;
-        for (int i = 0; i < argc - argOffset; ++i) {
+        const char* keyMaskArg;
+        bool stop = false;
+
+        for (int i = 0; i < argc - argOffset && !stop; ++i) {
             switch (i) {
                 case 0:
                     copyStringAllocated(RedisModule_StringPtrLen(argv[argOffset + i], &len), &hostname, true);
@@ -200,11 +221,16 @@ int setupConfig(RedisModuleCtx *ctx, RedisModuleString **argv, int argc, int arg
                     }
                     publishProps.delivery_mode = delivery_mode;
                     break;
-                case 8:
-                    RedisModule_FreeString(ctx, storageRedisKeyName);
-                    storageRedisKeyName = RedisModule_CreateStringFromString(ctx, argv[argOffset + i]);
-                    break;
                 default:
+                    keyMaskArg = RedisModule_StringPtrLen(argv[argOffset + i], &len);
+                    if(strcmp(keyMaskArg, KEY_MASK_ALL) == 0) {
+                        stringArrayClean(&keyMaskArr);
+                        stringArrayAdd(&keyMaskArr, KEY_MASK_ALL);
+                        stop = true;
+                        break;
+                    }
+
+                    stringArrayAdd(&keyMaskArr, keyMaskArg);
                     break;
             }
         }
@@ -219,15 +245,29 @@ int init(RedisModuleCtx *ctx, RedisModuleString **argv, int argc) {
     publishProps.content_type = amqp_cstring_bytes("text/plain");
     publishProps.delivery_mode = 1; //AMQP delivery mode NON persistent
 
+    stringArrayInit(&keyMaskArr, 0, 8);
+
     setupDefaultConfig(ctx);
-    return setupConfig(ctx, argv, argc, 0);
+
+    /**
+     * On MODULE LOAD command, argv starts from first argument after module path, command and module path are not included.
+     * argOffset = 1 be cause on module load first argument must be an mask for keyspace events to subscribe.
+     *      There is no API to change subscription at runtime, so events mask is must be constant after init.
+     */
+    return setupConfig(ctx, argv, argc, 1);
 }
 
 int AmqpConnect_RedisCommand(RedisModuleCtx *ctx, RedisModuleString **argv, int argc) {
+
+    /**
+     * On simple command argv starts from first literal? including command name.
+     * So i need to skip first argv.
+     */
     if(setupConfig(ctx, argv, argc, 1) != REDISMODULE_OK) {
         RedisModule_WrongArity(ctx);
         return REDISMODULE_ERR;
     }
+
     int amqrp_response = amqpConnect(ctx, &conn, hostname, port, username, password, heartbeat);
     if(amqrp_response != REDIS_AMQP_OK) {
         char buffer[32];
@@ -291,9 +331,54 @@ int RedisModule_OnLoad(RedisModuleCtx *ctx, RedisModuleString **argv, int argc) 
         return REDISMODULE_ERR;
     }
 
+    uint keySpaceSubscriptionMode = 0;
+
+    if(argc > 0) {
+        size_t len;
+        const char * eventsMask = RedisModule_StringPtrLen(argv[0], &len);
+        const char* err = "Wrong events mask mode. Use 'g$lshzxeA' like 'notify-keyspace-events' for CONFIG SET";
+        for(u_long i=0; i < strlen(eventsMask); ++i) {
+            switch(eventsMask[i]) {
+                case 'g':
+                    keySpaceSubscriptionMode |= REDISMODULE_NOTIFY_GENERIC; // NOLINT(hicpp-signed-bitwise)
+                    break;
+                case '$':
+                    keySpaceSubscriptionMode |= REDISMODULE_NOTIFY_STRING; // NOLINT(hicpp-signed-bitwise)
+                    break;
+                case 'l':
+                    keySpaceSubscriptionMode |= REDISMODULE_NOTIFY_LIST; // NOLINT(hicpp-signed-bitwise)
+                    break;
+                case 's':
+                    keySpaceSubscriptionMode |= REDISMODULE_NOTIFY_SET; // NOLINT(hicpp-signed-bitwise)
+                    break;
+                case 'h':
+                    keySpaceSubscriptionMode |= REDISMODULE_NOTIFY_HASH; // NOLINT(hicpp-signed-bitwise)
+                    break;
+                case 'z':
+                    keySpaceSubscriptionMode |= REDISMODULE_NOTIFY_ZSET; // NOLINT(hicpp-signed-bitwise)
+                    break;
+                case 'x':
+                    keySpaceSubscriptionMode |= REDISMODULE_NOTIFY_EXPIRED; // NOLINT(hicpp-signed-bitwise)
+                    break;
+                case 'e':
+                    keySpaceSubscriptionMode |= REDISMODULE_NOTIFY_EVICTED; // NOLINT(hicpp-signed-bitwise)
+                    break;
+                case 'A':
+                    keySpaceSubscriptionMode |= REDISMODULE_NOTIFY_ALL; // NOLINT(hicpp-signed-bitwise)
+                    break;
+                default:
+                    RedisModule_Log(ctx, "error", err);
+                    return REDISMODULE_ERR;
+            }
+        }
+    } else {
+        keySpaceSubscriptionMode = REDISMODULE_NOTIFY_ALL; // NOLINT(hicpp-signed-bitwise)
+    }
+
     amqpConnectionEnabled = true;
 
-    RedisModule_SubscribeToKeyspaceEvents(ctx, REDISMODULE_NOTIFY_EXPIRED, onKeyspaceEvent); // NOLINT(hicpp-signed-bitwise)
+    RedisModule_SubscribeToKeyspaceEvents(ctx, keySpaceSubscriptionMode, onKeyspaceEvent); // NOLINT(hicpp-signed-bitwise)
 
     return REDISMODULE_OK;
 }
+
