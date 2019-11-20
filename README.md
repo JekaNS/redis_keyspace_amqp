@@ -18,7 +18,7 @@ This ia a redis module that can catch keyspace events and send it to RabbitMQ
   connecting to RabbitMQ over SSL/TLS
 
 After downloading and extracting the source from a tarball to a directory
-, the commands to build rabbitmq-c on most
+, the commands to build libredis_keyspace_amqp on most
 systems are:
 
     mkdir build && cd build
