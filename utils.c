@@ -29,12 +29,12 @@ void stringArrayInit(string_array_t** arr, int size, int capacity) {
     (*arr) = RedisModule_Alloc(sizeof(string_array_t));
     (*arr)->size = size;
     (*arr)->capacity = capacity;
-    (*arr)->data = RedisModule_Alloc(capacity * sizeof(char*));
+    (*arr)->data = RedisModule_Alloc(capacity );
 }
 
 void stringArrayAdd(string_array_t** arr, const char* value) {
     if((*arr)->size >= (*arr)->capacity) {
-        (*arr)->data = RedisModule_Realloc((*arr)->data, (*arr)->capacity * 2);
+        (*arr)->data = RedisModule_Realloc((*arr)->data, (*arr)->capacity * sizeof(char*) * 2);
         (*arr)->capacity *= 2;
     }
     (*arr)->data[(*arr)->size] = RedisModule_Alloc(strlen(value) + 1);
@@ -57,6 +57,57 @@ uint stringArrayGetLength(string_array_t** arr) {
 const char* stringArrayGetElement(string_array_t** arr, uint index) {
     return (*arr)->data[index];
 }
+
+char* redisArgsToSerializedString(RedisModuleString **argv, int argc) {
+    size_t len = 0;
+    size_t totalLen = 0;
+    const char *args[argc];
+    for(int i=0; i<argc; ++i) {
+        args[i] = RedisModule_StringPtrLen(argv[i], &len);
+        totalLen += len;
+    }
+    char* serializedData[totalLen];
+    *serializedData = RedisModule_Alloc(sizeof(char*) * totalLen);
+    for(int i=0; i<argc; ++i) {
+        if(i==0) {
+            strcpy(*serializedData, args[i]);
+        } else {
+            strcat(*serializedData, "\n");
+            strcat(*serializedData, args[i]);
+        }
+    }
+
+    return *serializedData;
+}
+
+RedisModuleString** serializedStringToRedisArgs(RedisModuleCtx *ctx, const char* serializedData, size_t* argc) {
+    *argc = 0;
+    RedisModuleString** out[0];
+    (*out) = RedisModule_Alloc(0);
+    char* buff[strlen(serializedData)];
+    *buff = RedisModule_Alloc(sizeof(char*) * strlen(serializedData));
+    int buffLen = 0;
+
+    for(size_t i=0; i < strlen(serializedData); ++i) {
+        if (serializedData[i] == '\n') {
+            (*out) = RedisModule_Realloc((*out), sizeof(RedisModuleString *));
+            (*out)[*argc] = RedisModule_CreateString(ctx, *buff, buffLen);
+            (*argc)++;
+            buffLen = 0;
+        } else {
+            (*buff)[buffLen] = serializedData[i];
+            buffLen++;
+        }
+    }
+
+    if(buffLen >0) {
+        (*out)[*argc] = RedisModule_CreateString(ctx, *buff, buffLen);
+        (*argc)++;
+    }
+    return *out;
+}
+
+
 
 /**
  * Simplified regexp

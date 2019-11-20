@@ -12,7 +12,7 @@
 
 amqp_connection_state_t conn;
 amqp_basic_properties_t publishProps;
-RedisModuleTimerID heardBeatTimerId;
+RedisModuleTimerID heardBeatTimerId = 0;
 
 char* hostname = ""; //hostname for AMQP connection
 uint16_t port = DEFAULT_AMQP_PORT; //port for AMQP connection
@@ -130,6 +130,13 @@ void checkFramesAndHeartbeat(RedisModuleCtx *ctx, void* data) {
     heardBeatTimerId = RedisModule_CreateTimer(ctx, checkFrameInterval, checkFramesAndHeartbeat, data);
 }
 
+bool isRedisCluster(RedisModuleCtx *ctx) {
+    unsigned int res = RedisModule_GetContextFlags(ctx);
+    if(res & REDISMODULE_CTX_FLAGS_CLUSTER) { // NOLINT(hicpp-signed-bitwise)
+        return 1;
+    }
+    return 0;
+}
 
 bool isRedisMaster(RedisModuleCtx *ctx) {
     unsigned int res = RedisModule_GetContextFlags(ctx);
@@ -178,6 +185,8 @@ void setupDefaultConfig(RedisModuleCtx *ctx) {
 
     copyAmqpStringAllocated(DEFAULT_AMQP_EXCHANGE, &exchange, false);
     copyAmqpStringAllocated(DEFAULT_AMQP_ROUTINGKEY, &routingKey, false);
+
+    stringArrayAdd(&keyMaskArr, KEY_MASK_ALL);
 
     storageRedisKeyName = RedisModule_CreateString(ctx, DEFAULT_FALLBACK_STORAGE_KEY, strlen(DEFAULT_FALLBACK_STORAGE_KEY));
 }
@@ -257,8 +266,14 @@ int init(RedisModuleCtx *ctx, RedisModuleString **argv, int argc) {
     return setupConfig(ctx, argv, argc, 1);
 }
 
-int AmqpConnect_RedisCommand(RedisModuleCtx *ctx, RedisModuleString **argv, int argc) {
+void broadcastRedisCommand(RedisModuleCtx *ctx, RedisModuleString **argv, int argc) {
+    if(isRedisCluster(ctx)) {
+        const char* serializedData =  redisArgsToSerializedString(argv, argc);
+        RedisModule_SendClusterMessage(ctx, NULL, CLUSTER_MESSAGE_TYPE_CMD, (unsigned char*) serializedData, strlen(serializedData));
+    }
+}
 
+int connectAmqpCommand(RedisModuleCtx *ctx, RedisModuleString **argv, int argc) {
     /**
      * On simple command argv starts from first literal? including command name.
      * So i need to skip first argv.
@@ -286,7 +301,7 @@ int AmqpConnect_RedisCommand(RedisModuleCtx *ctx, RedisModuleString **argv, int 
     return REDISMODULE_OK;
 }
 
-int AmqpDisconnect_RedisCommand(RedisModuleCtx *ctx, RedisModuleString **argv, int argc) {
+int disconnectAmqpCommand(RedisModuleCtx *ctx, RedisModuleString **argv, int argc) {
     REDISMODULE_NOT_USED(argv);
     if(argc > 1) {
         RedisModule_WrongArity(ctx);
@@ -314,16 +329,67 @@ int AmqpDisconnect_RedisCommand(RedisModuleCtx *ctx, RedisModuleString **argv, i
     return REDISMODULE_OK;
 }
 
+int AmqpConnect_RedisCommand(RedisModuleCtx *ctx, RedisModuleString **argv, int argc) {
+    broadcastRedisCommand(ctx, argv, argc);
+    return connectAmqpCommand(ctx, argv, argc);
+}
+
+int AmqpDisconnect_RedisCommand(RedisModuleCtx *ctx, RedisModuleString **argv, int argc) {
+    broadcastRedisCommand(ctx, argv, argc);
+    return disconnectAmqpCommand(ctx, argv, argc);
+}
+
+int setupConfig_RedisCommand(RedisModuleCtx *ctx, RedisModuleString **argv, int argc) {
+    broadcastRedisCommand(ctx, argv, argc);
+    return setupConfig(ctx, argv, argc, 1);
+}
+
+void clusterMessageReceiver(RedisModuleCtx *ctx, const char* sender_id, uint8_t type, const unsigned char* payload, uint32_t len) {
+    RedisModule_Log(ctx,"notice","Cluster message received (type %d) from %.*s: '%.*s'",
+                    type,REDISMODULE_NODE_ID_LEN,sender_id,(int)len, payload);
+
+    if(type != CLUSTER_MESSAGE_TYPE_CMD) {
+        return;
+    }
+
+    size_t argc;
+    RedisModuleString** argv = serializedStringToRedisArgs(ctx, (const char*) payload, &argc);
+
+    if(argc > 0) {
+        size_t tmp;
+        const char* command = RedisModule_StringPtrLen(argv[0], &tmp);
+
+        if(strcmp(command, REDIS_COMMAND_CONNECT) == 0) {
+            connectAmqpCommand(ctx, argv, argc);
+        }
+        else if(strcmp(command, REDIS_COMMAND_DISCONNECT) == 0) {
+            disconnectAmqpCommand(ctx, argv, argc);
+        }
+        else if(strcmp(command, REDIS_COMMAND_CONFIG) == 0) {
+            setupConfig(ctx, argv, argc, 1);
+        }
+
+        for(size_t i=0; i < argc; ++i) {
+            RedisModule_FreeString(ctx, argv[i]);
+        }
+        RedisModule_Free(argv);
+    }
+}
+
 int RedisModule_OnLoad(RedisModuleCtx *ctx, RedisModuleString **argv, int argc) {
-    if (RedisModule_Init(ctx,"key_evt_amqp",1, REDISMODULE_APIVER_1) != REDISMODULE_OK) {
+    if (RedisModule_Init(ctx,REDIS_MODULE_NAME,1, REDISMODULE_APIVER_1) != REDISMODULE_OK) {
         return REDISMODULE_ERR;
     }
 
-    if (RedisModule_CreateCommand(ctx, "key_evt_amqp.connect", AmqpConnect_RedisCommand, "readonly", 0, 0, 0) != REDISMODULE_OK) {
+    if (RedisModule_CreateCommand(ctx, REDIS_COMMAND_CONNECT, AmqpConnect_RedisCommand, "readonly", 0, 0, 0) != REDISMODULE_OK) {
         return REDISMODULE_ERR;
     }
 
-    if (RedisModule_CreateCommand(ctx, "key_evt_amqp.disconnect", AmqpDisconnect_RedisCommand, "readonly", 0, 0, 0) != REDISMODULE_OK) {
+    if (RedisModule_CreateCommand(ctx, REDIS_COMMAND_DISCONNECT, AmqpDisconnect_RedisCommand, "readonly", 0, 0, 0) != REDISMODULE_OK) {
+        return REDISMODULE_ERR;
+    }
+
+    if (RedisModule_CreateCommand(ctx, REDIS_COMMAND_CONFIG, setupConfig_RedisCommand, "readonly", 0, 0, 0) != REDISMODULE_OK) {
         return REDISMODULE_ERR;
     }
 
@@ -378,6 +444,10 @@ int RedisModule_OnLoad(RedisModuleCtx *ctx, RedisModuleString **argv, int argc) 
     amqpConnectionEnabled = true;
 
     RedisModule_SubscribeToKeyspaceEvents(ctx, keySpaceSubscriptionMode, onKeyspaceEvent); // NOLINT(hicpp-signed-bitwise)
+
+    if(isRedisCluster(ctx)) {
+        RedisModule_RegisterClusterMessageReceiver(ctx, CLUSTER_MESSAGE_TYPE_CMD, clusterMessageReceiver);
+    }
 
     return REDISMODULE_OK;
 }

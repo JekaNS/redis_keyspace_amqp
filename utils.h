@@ -23,6 +23,8 @@ void stringArrayAdd(string_array_t** arr, const char* value);
 void stringArrayClean(string_array_t** arr);
 uint stringArrayGetLength(string_array_t** arr);
 const char* stringArrayGetElement(string_array_t** arr, uint index);
+char* redisArgsToSerializedString(RedisModuleString **argv, int argc);
+RedisModuleString** serializedStringToRedisArgs(RedisModuleCtx *ctx, const char* serializedData, size_t* argc);
 int match(const char *regexp, const char *text);
 
 #endif //REDIS_KEYSPACE_AMQP_UTILS_H
