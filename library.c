@@ -25,18 +25,24 @@ amqp_bytes_t routingKey; //routing key for AMQP publish
 mstime_t checkFrameInterval = 1000;
 
 bool amqpConnectionEnabled = false;
-RedisModuleString *storageRedisKeyName;
+RedisModuleString *fallbackStorageRedisKeyName;
+int fallBackStorageSize = DEFAULT_FALLBACK_STORAGE_SIZE;
 
 string_array_t* keyMaskArr;
 
 int publishStoredEvents(RedisModuleCtx *ctx) {
     //Send all messages from storage
+
+    if(fallBackStorageSize < 0) {
+        return REDISMODULE_OK;
+    }
+
     int res;
     size_t len;
     const char* messageTemp;
     RedisModuleKey *storageList = RedisModule_OpenKey(
             ctx,
-            storageRedisKeyName,
+            fallbackStorageRedisKeyName,
             REDISMODULE_READ | REDISMODULE_WRITE // NOLINT(hicpp-signed-bitwise)
     );
     RedisModuleString *messageRedis = RedisModule_ListPop(storageList, REDISMODULE_LIST_HEAD);
@@ -61,11 +67,23 @@ int publishStoredEvents(RedisModuleCtx *ctx) {
 }
 
 void pushEventToStorage(RedisModuleCtx *ctx, const char* messageString) {
+    if(fallBackStorageSize < 0) {
+        return;
+    }
+
     RedisModuleKey *storageList = RedisModule_OpenKey(
             ctx,
-            storageRedisKeyName,
+            fallbackStorageRedisKeyName,
             REDISMODULE_READ | REDISMODULE_WRITE // NOLINT(hicpp-signed-bitwise)
     );
+
+    if(fallBackStorageSize > 0) {
+        size_t size = RedisModule_ValueLength(storageList);
+        if(size >= fallBackStorageSize) {
+            RedisModule_ListPop(storageList, REDISMODULE_LIST_HEAD);
+        }
+    }
+
     RedisModule_ListPush(storageList, REDISMODULE_LIST_TAIL, RedisModule_CreateString(ctx, messageString, strlen(messageString)));
     RedisModule_CloseKey(storageList);
 }
@@ -79,10 +97,8 @@ void pushEventToStorage(RedisModuleCtx *ctx, const char* messageString) {
 void publishEvent(RedisModuleCtx *ctx, const char* event, const char* keyname) {
     int res;
 
-    char messageString[strlen(event) + 1 + strlen(keyname)];
-    strcpy(messageString, event);
-    strcat(messageString, "\n");
-    strcat(messageString, keyname);
+    char messageString[21 + 1 + strlen(event) + 1 + strlen(keyname)];
+    sprintf(messageString, "%d\n%s\n%s", RedisModule_GetSelectedDb(ctx), event, keyname);
 
     if(conn != NULL) {
         res = amqpPublish(ctx, &conn, exchange, routingKey, &publishProps, messageString);
@@ -188,14 +204,14 @@ void setupDefaultConfig(RedisModuleCtx *ctx) {
 
     stringArrayAdd(&keyMaskArr, KEY_MASK_ALL);
 
-    storageRedisKeyName = RedisModule_CreateString(ctx, DEFAULT_FALLBACK_STORAGE_KEY, strlen(DEFAULT_FALLBACK_STORAGE_KEY));
+    fallbackStorageRedisKeyName = RedisModule_CreateString(ctx, DEFAULT_FALLBACK_STORAGE_KEY, strlen(DEFAULT_FALLBACK_STORAGE_KEY));
 }
 
 int setupConfig(RedisModuleCtx *ctx, RedisModuleString **argv, int argc, int argOffset) {
     if(argc - argOffset > 0) {
         size_t len;
         char **rest = NULL;
-        uint8_t delivery_mode;
+        uint8_t deliveryMode;
         const char* keyMaskArg;
         bool stop = false;
 
@@ -223,12 +239,15 @@ int setupConfig(RedisModuleCtx *ctx, RedisModuleString **argv, int argc, int arg
                     copyAmqpStringAllocated(RedisModule_StringPtrLen(argv[argOffset + i], &len), &routingKey, true);
                     break;
                 case 7:
-                    delivery_mode = (uint8_t) strtol(RedisModule_StringPtrLen(argv[argOffset + i], &len), rest, 10);
-                    if(delivery_mode > 2) {
-                        RedisModule_Log(ctx, "error", "Wrong value for delivery_mode");
+                    deliveryMode = (uint8_t) strtol(RedisModule_StringPtrLen(argv[argOffset + i], &len), rest, 10);
+                    if(deliveryMode > 2) {
+                        RedisModule_Log(ctx, "error", "Wrong value for deliveryMode");
                         return REDISMODULE_ERR;
                     }
-                    publishProps.delivery_mode = delivery_mode;
+                    publishProps.delivery_mode = deliveryMode;
+                    break;
+                case 8:
+                    fallBackStorageSize = (int) strtol(RedisModule_StringPtrLen(argv[argOffset + i], &len), rest, 10);
                     break;
                 default:
                     keyMaskArg = RedisModule_StringPtrLen(argv[argOffset + i], &len);
