@@ -4,7 +4,6 @@ project(redis_keyspace_amqp C)
 set(CMAKE_C_STANDARD 99)
 
 find_package(PkgConfig REQUIRED)
-find_package(openssl REQUIRED)
 
 pkg_search_module(RABBITMQ REQUIRED librabbitmq)
 

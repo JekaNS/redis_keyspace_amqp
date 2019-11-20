@@ -60,8 +60,7 @@ const char* stringArrayGetElement(string_array_t** arr, uint index) {
 
 /**
  * Simplified regexp
- * Copyied from https://www.cs.princeton.edu/courses/archive/spr09/cos333/beautiful.html
- * Thanks for Rob Pike
+ * Thanks for Rob Pike https://www.cs.princeton.edu/courses/archive/spr09/cos333/beautiful.html
  *
  * Usage:
  *   c    matches any literal character c

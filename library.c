@@ -243,7 +243,7 @@ int setupConfig(RedisModuleCtx *ctx, RedisModuleString **argv, int argc, int arg
 int init(RedisModuleCtx *ctx, RedisModuleString **argv, int argc) {
     publishProps._flags = AMQP_BASIC_CONTENT_TYPE_FLAG | AMQP_BASIC_DELIVERY_MODE_FLAG; // NOLINT(hicpp-signed-bitwise)
     publishProps.content_type = amqp_cstring_bytes("text/plain");
-    publishProps.delivery_mode = 1; //AMQP delivery mode NON persistent
+    publishProps.delivery_mode = DEFAULT_AMQP_DELIVERY_MODE; //AMQP delivery mode NON persistent
 
     stringArrayInit(&keyMaskArr, 0, 8);
 

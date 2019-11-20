@@ -11,6 +11,7 @@
 #define DEFAULT_AMQP_HEARTBEAT 30
 #define DEFAULT_AMQP_EXCHANGE "amq.direct"
 #define DEFAULT_AMQP_ROUTINGKEY "redis_keyspace_events"
+#define DEFAULT_AMQP_DELIVERY_MODE 1;
 
 #define KEY_MASK_ALL "ALL"
 
