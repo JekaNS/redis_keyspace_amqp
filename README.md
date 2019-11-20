@@ -2,8 +2,8 @@
 
 ## Introduction
 
-This ia a redis module that can catch keyspace events and send it to RabbitMQ
-Redis CLuster supported
+This ia a redis module that can catch keyspace events and send it to RabbitMQ.  
+Redis CLuster supported.
 
 ## Getting started
 
