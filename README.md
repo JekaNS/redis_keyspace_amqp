@@ -69,8 +69,9 @@ Configuration params description:
     Default: redis_keyspace_events
 - delivery_mode for publish AMQP message. 1 (nonpersistent) or 2 (persistent).  
     Default: 1
-- key_mask for filter keys. If you need to catch events for all keys, just pass there "ALL". Otherwise you can use simple mask like "^prefix.*$". There is no regular expressions, just simple checks.  
+- key_mask for filter keys. If you need to catch events for all keys, just pass there "ALL". Otherwise you can use simple mask like "^prefix.*$". There is no regular expressions, just simple checks.
     Thanks [Rob Pike for the code](https://www.cs.princeton.edu/courses/archive/spr09/cos333/beautiful.html)
+      
     You can use following constructs:
     - "c" matches any literal character c
     - "." matches any single character
@@ -79,6 +80,7 @@ Configuration params description:
     - "*" matches zero or more occurrences of the previous character
     
     There can be multiple masks at same time. Just use every mask as next parameter.  
-    In case if one of masks equals "ALL", other masks will be ignored.  
+    In case if one of masks equals "ALL", other masks will be ignored.
+      
     Default: ALL
     
