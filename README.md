@@ -174,7 +174,7 @@ After this, module will not be forward any events.
 Adds keymasks to filters existing in configuration. See description for key_mask param of MODULE LOAD command above.  
 You can pass any numbers of keymasks as separate parameters.
 
-        key_evt_amqp.keymask_add ^prefix.*$ somesubstring other_key.*postfix$
+        key_evt_amqp.keymask_add ^prefix.*$ .*substring.* other_key.*postfix$
         key_evt_amqp.keymask_add ALL
 
 
@@ -184,7 +184,7 @@ You can pass any numbers of keymasks as separate parameters.
 Same thing as doing sequentially "key_evt_amqp.keymask_clean" and then "key_evt_amqp.keymask_add".   
 You can pass any numbers of keymasks as separate parameters.
 
-        key_evt_amqp.keymask_set ^prefix.*$ somesubstring other_key.*postfix$
+        key_evt_amqp.keymask_set ^prefix.*$ .*substring.* other_key.*postfix$
         key_evt_amqp.keymask_set ALL
 
 
