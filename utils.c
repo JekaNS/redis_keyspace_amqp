@@ -25,11 +25,11 @@ void copyAmqpStringAllocated(const char* in, amqp_bytes_t* out, bool needFree) {
     strcpy((*out).bytes, in);
 }
 
-void stringArrayInit(string_array_t** arr, int size, int capacity) {
+void stringArrayInit(string_array_t** arr, uint size, uint capacity) {
     (*arr) = RedisModule_Alloc(sizeof(string_array_t));
     (*arr)->size = size;
     (*arr)->capacity = capacity;
-    (*arr)->data = RedisModule_Alloc(capacity );
+    (*arr)->data = RedisModule_Alloc(capacity);
 }
 
 void stringArrayAdd(string_array_t** arr, const char* value) {
@@ -92,7 +92,7 @@ RedisModuleString** serializedStringToRedisArgs(RedisModuleCtx *ctx, const char*
     (*out) = RedisModule_Alloc(0);
     char* buff[strlen(serializedData)];
     *buff = RedisModule_Alloc(sizeof(char*) * strlen(serializedData));
-    int buffLen = 0;
+    size_t buffLen = 0;
 
     for(size_t i=0; i < strlen(serializedData); ++i) {
         if (serializedData[i] == '\n') {

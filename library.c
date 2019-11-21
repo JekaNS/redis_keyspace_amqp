@@ -26,8 +26,8 @@ mstime_t checkFrameInterval = 1000;
 
 bool amqpConnectionEnabled = false;
 RedisModuleString *fallbackStorageRedisKeyName;
-int fallbackStorageMaxSize = DEFAULT_FALLBACK_STORAGE_SIZE;
-int fallbackStorageLen = 0;
+size_t fallbackStorageMaxSize = DEFAULT_FALLBACK_STORAGE_SIZE;
+size_t fallbackStorageLen = 0;
 
 string_array_t* keyMaskArr;
 
@@ -162,7 +162,7 @@ void checkFramesAndHeartbeat(RedisModuleCtx *ctx, void* data) {
 }
 
 bool isRedisCluster(RedisModuleCtx *ctx) {
-    unsigned int res = RedisModule_GetContextFlags(ctx);
+    int res = RedisModule_GetContextFlags(ctx);
     if(res & REDISMODULE_CTX_FLAGS_CLUSTER) { // NOLINT(hicpp-signed-bitwise)
         return 1;
     }
@@ -170,7 +170,7 @@ bool isRedisCluster(RedisModuleCtx *ctx) {
 }
 
 bool isRedisMaster(RedisModuleCtx *ctx) {
-    unsigned int res = RedisModule_GetContextFlags(ctx);
+    int res = RedisModule_GetContextFlags(ctx);
     if(res & REDISMODULE_CTX_FLAGS_MASTER) { // NOLINT(hicpp-signed-bitwise)
         return 1;
     }
@@ -267,7 +267,7 @@ int setupConfig(RedisModuleCtx *ctx, RedisModuleString **argv, int argc, int arg
                     publishProps.delivery_mode = deliveryMode;
                     break;
                 case 8:
-                    fallbackStorageMaxSize = (int) strtol(RedisModule_StringPtrLen(argv[argOffset + i], &len), rest, 10);
+                    fallbackStorageMaxSize = (size_t) strtol(RedisModule_StringPtrLen(argv[argOffset + i], &len), rest, 10);
                     break;
                 default:
                     keyMaskArg = RedisModule_StringPtrLen(argv[argOffset + i], &len);
@@ -311,7 +311,7 @@ int init(RedisModuleCtx *ctx, RedisModuleString **argv, int argc) {
 void broadcastRedisCommand(RedisModuleCtx *ctx, RedisModuleString **argv, int argc) {
     if(isRedisCluster(ctx)) {
         const char* serializedData =  redisArgsToSerializedString(argv, argc);
-        RedisModule_SendClusterMessage(ctx, NULL, CLUSTER_MESSAGE_TYPE_CMD, (unsigned char*) serializedData, strlen(serializedData));
+        RedisModule_SendClusterMessage(ctx, NULL, CLUSTER_MESSAGE_TYPE_CMD, (unsigned char*) serializedData, (uint32_t) strlen(serializedData));
         RedisModule_Free((char*)serializedData);
     }
 }
@@ -379,7 +379,7 @@ int setupFallbackStorageSizeCommand(RedisModuleCtx *ctx, RedisModuleString **arg
 
     size_t len;
     char **rest = NULL;
-    fallbackStorageMaxSize = (int) strtol(RedisModule_StringPtrLen(argv[1], &len), rest, 10);
+    fallbackStorageMaxSize = (size_t) strtol(RedisModule_StringPtrLen(argv[1], &len), rest, 10);
     setupFallbackStorage(ctx);
 
     return REDISMODULE_OK;
@@ -476,26 +476,26 @@ void clusterMessageReceiver(RedisModuleCtx *ctx, const char* sender_id, uint8_t 
         const char* command = RedisModule_StringPtrLen(argv[0], &tmp);
 
         if(strcmp(command, REDIS_COMMAND_CONNECT) == 0) {
-            connectAmqpCommand(ctx, argv, argc);
+            connectAmqpCommand(ctx, argv, (int) argc);
         }
         else if(strcmp(command, REDIS_COMMAND_DISCONNECT) == 0) {
-            disconnectAmqpCommand(ctx, argv, argc);
+            disconnectAmqpCommand(ctx, argv, (int) argc);
         }
         else if(strcmp(command, REDIS_COMMAND_CONFIG) == 0) {
-            setupConfig(ctx, argv, argc, 1);
+            setupConfig(ctx, argv, (int) argc, 1);
         }
         else if(strcmp(command, REDIS_COMMAND_FALLBACK_STORAGE_SIZE) == 0) {
-            setupFallbackStorageSizeCommand(ctx, argv, argc);
+            setupFallbackStorageSizeCommand(ctx, argv, (int) argc);
         }
         else if(strcmp(command, REDIS_COMMAND_KEYMASK_CLEAN) == 0) {
             keymaskCleanCommand(ctx);
         }
         else if(strcmp(command, REDIS_COMMAND_KEYMASK_ADD) == 0) {
-            keymaskAddCommand(ctx, argv, argc);
+            keymaskAddCommand(ctx, argv, (int) argc);
         }
         else if(strcmp(command, REDIS_COMMAND_KEYMASK_ADD) == 0) {
             keymaskCleanCommand(ctx);
-            keymaskAddCommand(ctx, argv, argc);
+            keymaskAddCommand(ctx, argv, (int) argc);
         }
 
         for(size_t i=0; i < argc; ++i) {

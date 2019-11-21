@@ -18,7 +18,7 @@ typedef struct string_array_t_ {
 
 void copyStringAllocated(const char* in, char** out, bool needFree);
 void copyAmqpStringAllocated(const char* in, amqp_bytes_t* out, bool needFree);
-void stringArrayInit(string_array_t** arr, int size, int capacity);
+void stringArrayInit(string_array_t** arr, uint size, uint capacity);
 void stringArrayAdd(string_array_t** arr, const char* value);
 void stringArrayClean(string_array_t** arr);
 uint stringArrayGetLength(string_array_t** arr);
