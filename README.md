@@ -7,7 +7,7 @@ Module name: key_evt_amqp
 This is a redis module that can catch keyspace events, [like this](https://redis.io/topics/notifications), and send it to RabbitMQ.  
 Redis Cluster supported.
 
-Upon loading, this module subscribes to internal keyspace events. Connection to RabbitMQ is lazy. When a keyspace event occurs, the module serializes it and sends an AMQP message to the broker.  
+After loading, this module subscribes to internal keyspace events, connection to RabbitMQ is lazy. When a keyspace event occurs, the module serializes it and sends an AMQP message to the broker.  
   
 Format of AMQP message body is simple multiline string  with line endings "\n" and 3 values: Redis DB id, event name, key name.  
 Example:
@@ -168,3 +168,9 @@ You can pass any numbers of keymasks as separate parameters.
         key_evt_amqp.keymask_set ^prefix.*$ somesubstring other_key.*postfix$
         key_evt_amqp.keymask_set ALL
 
+
+##Built with
+
+- [RabbitMQ C AMQP client library](https://github.com/alanxz/rabbitmq-c)
+- [Redis modules API](https://redis.io/topics/modules-api-ref)
+- Thanks Rob Pike for parser of simplified regex [https://www.cs.princeton.edu/courses/archive/spr09/cos333/beautiful.html](https://www.cs.princeton.edu/courses/archive/spr09/cos333/beautiful.html)
