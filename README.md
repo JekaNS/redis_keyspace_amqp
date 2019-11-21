@@ -56,7 +56,7 @@ Also on load, you can pass parameters for redis_keyspace_amqp module configurati
 
 Example:
     
->MODULE LOAD <PATH_TO_BUILD_DIR>/libredis_keyspace_amqp.so xe 127.0.0.1 5672 user pass 20 exchange_name routing_key 2 10000000 ALL 
+        MODULE LOAD <PATH_TO_BUILD_DIR>/libredis_keyspace_amqp.so xe 127.0.0.1 5672 user pass 20 exchange_name routing_key 2 10000000 ALL 
 
 Or in redis.conf:
 
