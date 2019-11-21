@@ -30,7 +30,7 @@ Also in cluster mode all module commands will be broadcast to all nodes. So you 
 
 ### Building
 
-### Prereqs:
+#### Prereqs:
 - [CMake v3.7 or better](http://www.cmake.org/)
 - A C compiler (GCC, clang. Other compilers may also
   work)
