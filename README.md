@@ -42,11 +42,14 @@ After downloading and extracting the source from a tarball to a directory
 , the commands to build libredis_keyspace_amqp on most
 systems are:
 
+
     mkdir build && cd build
     cmake -DCMAKE_BUILD_TYPE=Release ..
     cmake --build . --target redis_keyspace_amqp
+
     
 ### Usage
+
 
 Load module into redis using MODULE LOAD command or at startup using "loadmodule" directive in redis.conf.
 Also on load, you can pass parameters for redis_keyspace_amqp module configuration.
@@ -54,6 +57,7 @@ Also on load, you can pass parameters for redis_keyspace_amqp module configurati
 Example:
     
     MODULE LOAD <PATH_TO_BUILD_DIR>/libredis_keyspace_amqp.so xe 127.0.0.1 5672 user pass 20 exchange_name routing_key 2 10000000 ALL
+
 Or in redis.conf:
 
     loadmodule <PATH_TO_BUILD_DIR>/libredis_keyspace_amqp.so xe 127.0.0.1 5672 user pass 20 exchange_name routing_key 2 10000000 ALL
