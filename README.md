@@ -1,13 +1,23 @@
 # Redis keyspace event to AMQP
 
-## Introduction
+## Description
 
 This ia a redis module that can catch keyspace events and send it to RabbitMQ.  
 Redis Cluster supported.
 
+Upon loading, this module subscribes to internal key space events. Connection to RabbitMQ is lazy. When a keyspace event occurs, the module serializes it and sends an AMQP message to the broker.  
+
+If for some reason the AMQP message cannot be delivered, the module saves the events in to native RedisList structure as a fallback behavior. When the connection returns, all events from the backup storage will be sent to the broker.  
+
+Module configuration allow you can select event types that will be listen. Also you can use a filters for events by key mask like ^prefix.*$. Or you can catch events for ALL keys.    
+
+In Cluster mode, module must be loaded to all nodes. But only master nodes will be send AMQP messages to broker. When node change self state from master to slave or back, module automaticaly decide  wich node must forward keyspace events in to RabbitMQ. In this way  excluded duplicates of events.   
+
+Also in cluster mode all module commands will be broadcast to all nodes. So you don't need to execute every command on each node.  
+
 ## Getting started
 
-### Building and installing
+### Building
 
 #### Prereqs:
 - [CMake v3.7 or better](http://www.cmake.org/)
@@ -15,8 +25,7 @@ Redis Cluster supported.
   work)
 - [pkg-config](http://pkg-config.freedesktop.org)
 - [RabbitMQ C client](https://github.com/alanxz/rabbitmq-c) (librabbitmq-dev) 
-- *Optionally* [OpenSSL](http://www.openssl.org/) v0.9.8+ to enable support for
-  connecting to RabbitMQ over SSL/TLS
+
 
 After downloading and extracting the source from a tarball to a directory
 , the commands to build libredis_keyspace_amqp on most
@@ -33,14 +42,14 @@ Also on load, you can pass parameters for redis_keyspace_amqp module configurati
 
 Example:
     
-    MODULE LOAD <PATH_TO_BUILD_DIR>/libredis_keyspace_amqp.so xe 127.0.0.1 5672 user pass 20 exchange_name routing_key 2 ALL
+    MODULE LOAD <PATH_TO_BUILD_DIR>/libredis_keyspace_amqp.so xe 127.0.0.1 5672 user pass 20 exchange_name routing_key 2  10000000 ALL
 Or in redis.conf:
 
-    loadmodule <PATH_TO_BUILD_DIR>/libredis_keyspace_amqp.so xe 127.0.0.1 5672 user pass 20 exchange_name routing_key 2 ALL
+    loadmodule <PATH_TO_BUILD_DIR>/libredis_keyspace_amqp.so xe 127.0.0.1 5672 user pass 20 exchange_name routing_key 2 10000000 ALL
 
 Configuration params description:
 
-- "xe" String flag that mean witch type of redis keyspace events will be listen. 
+- "xe" String flags that mean witch type of redis keyspace events will be listen. 
     See [Redis Keyspace Notifications](https://redis.io/topics/notifications#configuration) for for more information.   
     Possible values is: 
     - g     Generic commands (non-type specific) like DEL, EXPIRE, RENAME, ...
@@ -53,7 +62,7 @@ Configuration params description:
     - e     Evicted events (events generated when a key is evicted for maxmemory)
     - A     Alias for g$lshzxe
     
-    Default: "A" - all types of events
+    Default: "xe" - all types of events
 - hostname for RabbitMQ connection.  
     Default: 127.0.0.1
 - port for RabbitMQ connection.  
@@ -70,6 +79,11 @@ Configuration params description:
     Default: redis_keyspace_events
 - delivery_mode for publish AMQP message. 1 (nonpersistent) or 2 (persistent).  
     Default: 1
+- fallback_storage_size Size of RedisList structure for store events that happens when no connection to RabbitMQ.  
+  positive integer (>0) - max number of stored events in RedisList  
+  0 - unlimited fallback storage  
+  negative integer (<0) - turnoff fallback behavior  
+  Default: 10 000 000
 - key_mask for filter keys. If you need to catch events for all keys, just pass there "ALL". Otherwise you can use simple mask like "^prefix.*$". There is no regular expressions, just simple checks.
     Thanks [Rob Pike for the code](https://www.cs.princeton.edu/courses/archive/spr09/cos333/beautiful.html)
       
