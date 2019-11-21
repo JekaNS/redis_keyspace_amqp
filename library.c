@@ -26,14 +26,15 @@ mstime_t checkFrameInterval = 1000;
 
 bool amqpConnectionEnabled = false;
 RedisModuleString *fallbackStorageRedisKeyName;
-int fallBackStorageSize = DEFAULT_FALLBACK_STORAGE_SIZE;
+int fallbackStorageMaxSize = DEFAULT_FALLBACK_STORAGE_SIZE;
+int fallbackStorageLen = 0;
 
 string_array_t* keyMaskArr;
 
 int publishStoredEvents(RedisModuleCtx *ctx) {
     //Send all messages from storage
 
-    if(fallBackStorageSize < 0) {
+    if(fallbackStorageMaxSize < 0) {
         return REDISMODULE_OK;
     }
 
@@ -56,6 +57,7 @@ int publishStoredEvents(RedisModuleCtx *ctx) {
             RedisModule_FreeString(ctx, messageRedis);
             return REDISMODULE_ERR;
         }
+        fallbackStorageLen--;
         RedisModule_FreeString(ctx, messageRedis);
         messageRedis = RedisModule_ListPop(storageList, REDISMODULE_LIST_HEAD);
     }
@@ -66,8 +68,14 @@ int publishStoredEvents(RedisModuleCtx *ctx) {
     return REDISMODULE_OK;
 }
 
+void syncFallbackStorageLen(RedisModuleCtx *ctx) {
+    RedisModuleKey *storageList = RedisModule_OpenKey(ctx, fallbackStorageRedisKeyName, REDISMODULE_READ); // NOLINT(hicpp-signed-bitwise)
+    fallbackStorageLen = RedisModule_ValueLength(storageList);
+    RedisModule_CloseKey(storageList);
+}
+
 void pushEventToStorage(RedisModuleCtx *ctx, const char* messageString) {
-    if(fallBackStorageSize < 0) {
+    if(fallbackStorageMaxSize < 0) {
         return;
     }
 
@@ -77,15 +85,22 @@ void pushEventToStorage(RedisModuleCtx *ctx, const char* messageString) {
             REDISMODULE_READ | REDISMODULE_WRITE // NOLINT(hicpp-signed-bitwise)
     );
 
-    if(fallBackStorageSize > 0) {
-        size_t size = RedisModule_ValueLength(storageList);
-        if(size >= fallBackStorageSize) {
-            RedisModule_ListPop(storageList, REDISMODULE_LIST_HEAD);
-        }
+    if(fallbackStorageMaxSize > 0 && fallbackStorageLen >= fallbackStorageMaxSize) {
+        RedisModule_ListPop(storageList, REDISMODULE_LIST_HEAD);
     }
 
     RedisModule_ListPush(storageList, REDISMODULE_LIST_TAIL, RedisModule_CreateString(ctx, messageString, strlen(messageString)));
     RedisModule_CloseKey(storageList);
+}
+
+void setupFallbackStorage(RedisModuleCtx *ctx) {
+    if(fallbackStorageMaxSize >= 0) {
+        syncFallbackStorageLen(ctx);
+    } else {
+        RedisModuleKey *storageList = RedisModule_OpenKey(ctx, fallbackStorageRedisKeyName, REDISMODULE_READ); // NOLINT(hicpp-signed-bitwise)
+        RedisModule_DeleteKey(storageList);
+        RedisModule_CloseKey(storageList);
+    }
 }
 
 /**
@@ -202,7 +217,8 @@ void setupDefaultConfig(RedisModuleCtx *ctx) {
     copyAmqpStringAllocated(DEFAULT_AMQP_EXCHANGE, &exchange, false);
     copyAmqpStringAllocated(DEFAULT_AMQP_ROUTINGKEY, &routingKey, false);
 
-    stringArrayAdd(&keyMaskArr, KEY_MASK_ALL);
+    //Default empty
+    //stringArrayAdd(&keyMaskArr, KEY_MASK_ALL);
 
     fallbackStorageRedisKeyName = RedisModule_CreateString(ctx, DEFAULT_FALLBACK_STORAGE_KEY, strlen(DEFAULT_FALLBACK_STORAGE_KEY));
 }
@@ -247,7 +263,7 @@ int setupConfig(RedisModuleCtx *ctx, RedisModuleString **argv, int argc, int arg
                     publishProps.delivery_mode = deliveryMode;
                     break;
                 case 8:
-                    fallBackStorageSize = (int) strtol(RedisModule_StringPtrLen(argv[argOffset + i], &len), rest, 10);
+                    fallbackStorageMaxSize = (int) strtol(RedisModule_StringPtrLen(argv[argOffset + i], &len), rest, 10);
                     break;
                 default:
                     keyMaskArg = RedisModule_StringPtrLen(argv[argOffset + i], &len);
@@ -265,6 +281,9 @@ int setupConfig(RedisModuleCtx *ctx, RedisModuleString **argv, int argc, int arg
 
         RedisModule_Log(ctx, "notice", "MODULE CONFIG CHANGED");
     }
+
+    setupFallbackStorage(ctx);
+
     return REDISMODULE_OK;
 }
 
@@ -349,19 +368,92 @@ int disconnectAmqpCommand(RedisModuleCtx *ctx, RedisModuleString **argv, int arg
     return REDISMODULE_OK;
 }
 
-int AmqpConnect_RedisCommand(RedisModuleCtx *ctx, RedisModuleString **argv, int argc) {
+int setupFallbackStorageSizeCommand(RedisModuleCtx *ctx, RedisModuleString **argv, int argc) {
+    if(argc != 2) {
+        return REDISMODULE_ERR;
+    }
+
+    size_t len;
+    char **rest = NULL;
+    fallbackStorageMaxSize = (int) strtol(RedisModule_StringPtrLen(argv[1], &len), rest, 10);
+    setupFallbackStorage(ctx);
+
+    return REDISMODULE_OK;
+}
+
+int keymaskCleanCommand(RedisModuleCtx *ctx) {
+    REDISMODULE_NOT_USED(ctx);
+    stringArrayClean(&keyMaskArr);
+    return REDISMODULE_OK;
+}
+
+int keymaskAddCommand(RedisModuleCtx *ctx, RedisModuleString **argv, int argc) {
+    REDISMODULE_NOT_USED(ctx);
+    size_t len;
+    const char* keyMaskArg;
+    for (int i = 0; i < argc; ++i) {
+        keyMaskArg = RedisModule_StringPtrLen(argv[i], &len);
+        if (strcmp(keyMaskArg, KEY_MASK_ALL) == 0) {
+            stringArrayClean(&keyMaskArr);
+            stringArrayAdd(&keyMaskArr, KEY_MASK_ALL);
+            break;
+        }
+        stringArrayAdd(&keyMaskArr, keyMaskArg);
+    }
+    return REDISMODULE_OK;
+}
+
+int amqpConnect_RedisCommand(RedisModuleCtx *ctx, RedisModuleString **argv, int argc) {
     broadcastRedisCommand(ctx, argv, argc);
     return connectAmqpCommand(ctx, argv, argc);
 }
 
-int AmqpDisconnect_RedisCommand(RedisModuleCtx *ctx, RedisModuleString **argv, int argc) {
+int amqpDisconnect_RedisCommand(RedisModuleCtx *ctx, RedisModuleString **argv, int argc) {
     broadcastRedisCommand(ctx, argv, argc);
     return disconnectAmqpCommand(ctx, argv, argc);
 }
 
 int setupConfig_RedisCommand(RedisModuleCtx *ctx, RedisModuleString **argv, int argc) {
+    if(argc < 2) {
+        RedisModule_WrongArity(ctx);
+    }
     broadcastRedisCommand(ctx, argv, argc);
     return setupConfig(ctx, argv, argc, 1);
+}
+
+int setupFallbackStorageSize_RedisCommand(RedisModuleCtx *ctx, RedisModuleString **argv, int argc) {
+    if(argc != 2) {
+        RedisModule_WrongArity(ctx);
+    }
+    broadcastRedisCommand(ctx, argv, argc);
+    return setupFallbackStorageSizeCommand(ctx, argv, argc);
+}
+
+int keymaskClean_RedisCommand(RedisModuleCtx *ctx, RedisModuleString **argv, int argc) {
+    if(argc > 1) {
+        RedisModule_WrongArity(ctx);
+    }
+    broadcastRedisCommand(ctx, argv, argc);
+    return keymaskCleanCommand(ctx);
+}
+
+int keymaskAdd_RedisCommand(RedisModuleCtx *ctx, RedisModuleString **argv, int argc) {
+    if(argc < 2) {
+        RedisModule_WrongArity(ctx);
+    }
+    broadcastRedisCommand(ctx, argv, argc);
+    return keymaskAddCommand(ctx, argv, argc);
+}
+
+int keymaskSet_RedisCommand(RedisModuleCtx *ctx, RedisModuleString **argv, int argc) {
+    if(argc < 2) {
+        RedisModule_WrongArity(ctx);
+    }
+    broadcastRedisCommand(ctx, argv, argc);
+    keymaskCleanCommand(ctx);
+    keymaskAddCommand(ctx, argv, argc);
+
+    return REDISMODULE_OK;
 }
 
 void clusterMessageReceiver(RedisModuleCtx *ctx, const char* sender_id, uint8_t type, const unsigned char* payload, uint32_t len) {
@@ -388,6 +480,19 @@ void clusterMessageReceiver(RedisModuleCtx *ctx, const char* sender_id, uint8_t 
         else if(strcmp(command, REDIS_COMMAND_CONFIG) == 0) {
             setupConfig(ctx, argv, argc, 1);
         }
+        else if(strcmp(command, REDIS_COMMAND_FALLBACK_STORAGE_SIZE) == 0) {
+            setupFallbackStorageSizeCommand(ctx, argv, argc);
+        }
+        else if(strcmp(command, REDIS_COMMAND_KEYMASK_CLEAN) == 0) {
+            keymaskCleanCommand(ctx);
+        }
+        else if(strcmp(command, REDIS_COMMAND_KEYMASK_ADD) == 0) {
+            keymaskAddCommand(ctx, argv, argc);
+        }
+        else if(strcmp(command, REDIS_COMMAND_KEYMASK_ADD) == 0) {
+            keymaskCleanCommand(ctx);
+            keymaskAddCommand(ctx, argv, argc);
+        }
 
         for(size_t i=0; i < argc; ++i) {
             RedisModule_FreeString(ctx, argv[i]);
@@ -401,15 +506,31 @@ int RedisModule_OnLoad(RedisModuleCtx *ctx, RedisModuleString **argv, int argc) 
         return REDISMODULE_ERR;
     }
 
-    if (RedisModule_CreateCommand(ctx, REDIS_COMMAND_CONNECT, AmqpConnect_RedisCommand, "readonly", 0, 0, 0) != REDISMODULE_OK) {
+    if (RedisModule_CreateCommand(ctx, REDIS_COMMAND_CONNECT, amqpConnect_RedisCommand, "write", 0, 0, 0) != REDISMODULE_OK) {
         return REDISMODULE_ERR;
     }
 
-    if (RedisModule_CreateCommand(ctx, REDIS_COMMAND_DISCONNECT, AmqpDisconnect_RedisCommand, "readonly", 0, 0, 0) != REDISMODULE_OK) {
+    if (RedisModule_CreateCommand(ctx, REDIS_COMMAND_DISCONNECT, amqpDisconnect_RedisCommand, "readonly", 0, 0, 0) != REDISMODULE_OK) {
         return REDISMODULE_ERR;
     }
 
-    if (RedisModule_CreateCommand(ctx, REDIS_COMMAND_CONFIG, setupConfig_RedisCommand, "readonly", 0, 0, 0) != REDISMODULE_OK) {
+    if (RedisModule_CreateCommand(ctx, REDIS_COMMAND_CONFIG, setupConfig_RedisCommand, "write", 0, 0, 0) != REDISMODULE_OK) {
+        return REDISMODULE_ERR;
+    }
+
+    if (RedisModule_CreateCommand(ctx, REDIS_COMMAND_FALLBACK_STORAGE_SIZE, setupFallbackStorageSize_RedisCommand, "write", 0, 0, 0) != REDISMODULE_OK) {
+        return REDISMODULE_ERR;
+    }
+
+    if (RedisModule_CreateCommand(ctx, REDIS_COMMAND_KEYMASK_CLEAN, keymaskClean_RedisCommand, "readonly", 0, 0, 0) != REDISMODULE_OK) {
+        return REDISMODULE_ERR;
+    }
+
+    if (RedisModule_CreateCommand(ctx, REDIS_COMMAND_KEYMASK_ADD, keymaskAdd_RedisCommand, "readonly", 0, 0, 0) != REDISMODULE_OK) {
+        return REDISMODULE_ERR;
+    }
+
+    if (RedisModule_CreateCommand(ctx, REDIS_COMMAND_KEYMASK_SET, keymaskSet_RedisCommand, "readonly", 0, 0, 0) != REDISMODULE_OK) {
         return REDISMODULE_ERR;
     }
 
@@ -458,10 +579,13 @@ int RedisModule_OnLoad(RedisModuleCtx *ctx, RedisModuleString **argv, int argc) 
             }
         }
     } else {
-        keySpaceSubscriptionMode = REDISMODULE_NOTIFY_ALL; // NOLINT(hicpp-signed-bitwise)
+        keySpaceSubscriptionMode = REDISMODULE_NOTIFY_EXPIRED | REDISMODULE_NOTIFY_EVICTED; // NOLINT(hicpp-signed-bitwise)
     }
 
-    amqpConnectionEnabled = true;
+    //No need to connect if nothing to do
+    if(stringArrayGetLength(&keyMaskArr) > 0) {
+        amqpConnectionEnabled = true;
+    }
 
     RedisModule_SubscribeToKeyspaceEvents(ctx, keySpaceSubscriptionMode, onKeyspaceEvent); // NOLINT(hicpp-signed-bitwise)
 
