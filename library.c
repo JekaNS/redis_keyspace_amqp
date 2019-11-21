@@ -231,6 +231,10 @@ int setupConfig(RedisModuleCtx *ctx, RedisModuleString **argv, int argc, int arg
         const char* keyMaskArg;
         bool stop = false;
 
+        if(argc - argOffset > 9) {
+            stringArrayClean(&keyMaskArr);
+        }
+
         for (int i = 0; i < argc - argOffset && !stop; ++i) {
             switch (i) {
                 case 0:
