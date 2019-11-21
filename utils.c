@@ -58,6 +58,9 @@ const char* stringArrayGetElement(string_array_t** arr, uint index) {
     return (*arr)->data[index];
 }
 
+/*
+ * Warning! Need to free serializedData after use
+ */
 char* redisArgsToSerializedString(RedisModuleString **argv, int argc) {
     size_t len = 0;
     size_t totalLen = 0;
@@ -80,6 +83,9 @@ char* redisArgsToSerializedString(RedisModuleString **argv, int argc) {
     return *serializedData;
 }
 
+/*
+ * Warning! Need to free unserializedData after use
+ */
 RedisModuleString** serializedStringToRedisArgs(RedisModuleCtx *ctx, const char* serializedData, size_t* argc) {
     *argc = 0;
     RedisModuleString** out[0];
@@ -104,6 +110,9 @@ RedisModuleString** serializedStringToRedisArgs(RedisModuleCtx *ctx, const char*
         (*out)[*argc] = RedisModule_CreateString(ctx, *buff, buffLen);
         (*argc)++;
     }
+
+    RedisModule_Free(*buff);
+
     return *out;
 }
 

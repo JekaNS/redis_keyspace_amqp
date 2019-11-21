@@ -289,6 +289,7 @@ void broadcastRedisCommand(RedisModuleCtx *ctx, RedisModuleString **argv, int ar
     if(isRedisCluster(ctx)) {
         const char* serializedData =  redisArgsToSerializedString(argv, argc);
         RedisModule_SendClusterMessage(ctx, NULL, CLUSTER_MESSAGE_TYPE_CMD, (unsigned char*) serializedData, strlen(serializedData));
+        RedisModule_Free((char*)serializedData);
     }
 }
 
