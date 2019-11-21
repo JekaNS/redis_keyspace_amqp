@@ -111,10 +111,13 @@ Configuration params description:
     In case if one of masks equals "ALL", other masks will be ignored.
       
     Default: [empty] that means that no events will be forwarded, until you manualy added any keymasks or "ALL"
-    
+
+
 ##Module commands
 
+
 ###key_evt_amqp.config_set
+
 
 Command will setup new module configuration. Accept same parameters as MODULE LOAD except module path and keyspace event types (g$lshzxe).  
 Requires at least one parameter.
@@ -122,7 +125,9 @@ Notice: if you provide params for keymask filters, that will be clear previously
 
         key_evt_amqp.config_set 127.0.0.1 5672 user pass 20 exchange_name routing_key 2 10000000 ALL
 
+
 ###key_evt_amqp.connect
+
 
 Command will setup new module configuration and then connect to RabbitMQ. Accept same parameters as MODULE LOAD except module path and keyspace event types (g$lshzxe).  
 If no parameters will provided, command will use configuration previously stated.  
@@ -130,14 +135,18 @@ Notice: if you provide params for keymask filters, that will be clear previously
 
         key_evt_amqp.connect 127.0.0.1 5672 user pass 20 exchange_name routing_key 2 10000000 ALL
 
+
 ###key_evt_amqp.disconnect
+
 
 Will disconnect from RabbitMQ. Connection will not be restored automaticaly.  
 Has no parameters.
 
         key_evt_amqp.disconnect
 
+
 ###key_evt_amqp.fallback_storage_size_set
+
 
 At run time you can setup fallback storage size. Size means events qty. Or you can use unlimited storage (0). And of course you can switch off fallback storage at all (-1).
 
@@ -145,14 +154,18 @@ At run time you can setup fallback storage size. Size means events qty. Or you c
         key_evt_amqp.fallback_storage_size_set 0
         key_evt_amqp.fallback_storage_size_set -1
 
+
 ###key_evt_amqp.keymask_clean
+
 
 This command will clean keymask filters. See default value for key_mask param of MODULE LOAD command above.  
 After this, module will not be forward any events.
 
         key_evt_amqp.keymask_clean
 
+
 ###key_evt_amqp.keymask_add
+
 
 Adds keymasks to filters existing in configuration. See description for key_mask param of MODULE LOAD command above.  
 You can pass any numbers of keymasks as separate parameters.
@@ -160,7 +173,9 @@ You can pass any numbers of keymasks as separate parameters.
         key_evt_amqp.keymask_add ^prefix.*$ somesubstring other_key.*postfix$
         key_evt_amqp.keymask_add ALL
 
+
 ###key_evt_amqp.keymask_set
+
 
 Same thing as doing sequentially "key_evt_amqp.keymask_clean" and then "key_evt_amqp.keymask_add".   
 You can pass any numbers of keymasks as separate parameters.
@@ -169,7 +184,9 @@ You can pass any numbers of keymasks as separate parameters.
         key_evt_amqp.keymask_set ALL
 
 
+
 ##Built with
+
 
 - [RabbitMQ C AMQP client library](https://github.com/alanxz/rabbitmq-c)
 - [Redis modules API](https://redis.io/topics/modules-api-ref)
