@@ -173,4 +173,4 @@ You can pass any numbers of keymasks as separate parameters.
 
 - [RabbitMQ C AMQP client library](https://github.com/alanxz/rabbitmq-c)
 - [Redis modules API](https://redis.io/topics/modules-api-ref)
-- Thanks Rob Pike for parser of simplified regex [https://www.cs.princeton.edu/courses/archive/spr09/cos333/beautiful.html](https://www.cs.princeton.edu/courses/archive/spr09/cos333/beautiful.html)
+- Thanks Rob Pike for code [https://www.cs.princeton.edu/courses/archive/spr09/cos333/beautiful.html](https://www.cs.princeton.edu/courses/archive/spr09/cos333/beautiful.html)
