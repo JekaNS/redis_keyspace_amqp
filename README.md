@@ -12,9 +12,9 @@ After loading, this module subscribes to internal keyspace events, connection to
 Format of AMQP message body is simple multiline string  with line endings "\n" and 3 values: Redis DB id, event name, key name.  
 Example:
 
->0  
->expire  
->redis_key_name  
+        0
+        expire
+        redis_key_name
 
 If for some reason the AMQP message cannot be delivered, the module saves the events in to native RedisList structure as a fallback behavior. When the connection returns, all events from the fallback storage will be sent to the broker.  
 
@@ -30,7 +30,7 @@ Also in cluster mode all module commands will be broadcast to all nodes. So you 
 
 ### Building
 
-#### Prereqs:
+## Prereqs:
 - [CMake v3.7 or better](http://www.cmake.org/)
 - A C compiler (GCC, clang. Other compilers may also
   work)
@@ -43,9 +43,9 @@ After downloading and extracting the source from a tarball to a directory
 systems are:
 
 
->mkdir build && cd build  
->cmake -DCMAKE_BUILD_TYPE=Release ..  
->cmake --build . --target redis_keyspace_amqp  
+    mkdir build && cd build
+    cmake -DCMAKE_BUILD_TYPE=Release ..
+    cmake --build . --target redis_keyspace_amqp
 
     
 ### Usage
@@ -56,11 +56,11 @@ Also on load, you can pass parameters for redis_keyspace_amqp module configurati
 
 Example:
     
-        MODULE LOAD <PATH_TO_BUILD_DIR>/libredis_keyspace_amqp.so xe 127.0.0.1 5672 user pass 20 exchange_name routing_key 2 10000000 ALL 
+    MODULE LOAD <PATH_TO_BUILD_DIR>/libredis_keyspace_amqp.so xe 127.0.0.1 5672 user pass 20 exchange_name routing_key 2 10000000 ALL
 
 Or in redis.conf:
 
->loadmodule <PATH_TO_BUILD_DIR>/libredis_keyspace_amqp.so xe 127.0.0.1 5672 user pass 20 exchange_name routing_key 2 10000000 ALL  
+    loadmodule <PATH_TO_BUILD_DIR>/libredis_keyspace_amqp.so xe 127.0.0.1 5672 user pass 20 exchange_name routing_key 2 10000000 ALL
 
 Configuration params description:
 
@@ -127,7 +127,7 @@ Command will setup new module configuration. Accept same parameters as MODULE LO
 Requires at least one parameter.
 Notice: if you provide params for keymask filters, that will be clear previously configured filters.
 
->key_evt_amqp.config_set 127.0.0.1 5672 user pass 20 exchange_name routing_key 2 10000000 ALL  
+        key_evt_amqp.config_set 127.0.0.1 5672 user pass 20 exchange_name routing_key 2 10000000 ALL
 
 
 ### key_evt_amqp.connect
@@ -137,7 +137,7 @@ Command will setup new module configuration and then connect to RabbitMQ. Accept
 If no parameters will provided, command will use configuration previously stated.  
 Notice: if you provide params for keymask filters, that will be clear previously configured filters.
 
->key_evt_amqp.connect 127.0.0.1 5672 user pass 20 exchange_name routing_key 2 10000000 ALL  
+        key_evt_amqp.connect 127.0.0.1 5672 user pass 20 exchange_name routing_key 2 10000000 ALL
 
 
 ### key_evt_amqp.disconnect
@@ -146,7 +146,7 @@ Notice: if you provide params for keymask filters, that will be clear previously
 Will disconnect from RabbitMQ. Connection will not be restored automaticaly.  
 Has no parameters.
 
->key_evt_amqp.disconnect  
+        key_evt_amqp.disconnect
 
 
 ### key_evt_amqp.fallback_storage_size_set
@@ -154,9 +154,9 @@ Has no parameters.
 
 At run time you can setup fallback storage size. Size means events qty. Or you can use unlimited storage (0). And of course you can switch off fallback storage at all (-1).
 
->key_evt_amqp.fallback_storage_size_set 10000000  
->key_evt_amqp.fallback_storage_size_set 0  
->key_evt_amqp.fallback_storage_size_set -1  
+        key_evt_amqp.fallback_storage_size_set 10000000
+        key_evt_amqp.fallback_storage_size_set 0
+        key_evt_amqp.fallback_storage_size_set -1
 
 
 ### key_evt_amqp.keymask_clean
@@ -165,7 +165,7 @@ At run time you can setup fallback storage size. Size means events qty. Or you c
 This command will clean keymask filters. See default value for key_mask param of MODULE LOAD command above.  
 After this, module will not be forward any events.
 
->key_evt_amqp.keymask_clean  
+        key_evt_amqp.keymask_clean
 
 
 ### key_evt_amqp.keymask_add
@@ -174,8 +174,8 @@ After this, module will not be forward any events.
 Adds keymasks to filters existing in configuration. See description for key_mask param of MODULE LOAD command above.  
 You can pass any numbers of keymasks as separate parameters.
 
->key_evt_amqp.keymask_add ^prefix.*$ somesubstring other_key.*postfix$  
->key_evt_amqp.keymask_add ALL  
+        key_evt_amqp.keymask_add ^prefix.*$ somesubstring other_key.*postfix$
+        key_evt_amqp.keymask_add ALL
 
 
 ### key_evt_amqp.keymask_set
@@ -184,8 +184,8 @@ You can pass any numbers of keymasks as separate parameters.
 Same thing as doing sequentially "key_evt_amqp.keymask_clean" and then "key_evt_amqp.keymask_add".   
 You can pass any numbers of keymasks as separate parameters.
 
->key_evt_amqp.keymask_set ^prefix.*$ somesubstring other_key.*postfix$  
->key_evt_amqp.keymask_set ALL  
+        key_evt_amqp.keymask_set ^prefix.*$ somesubstring other_key.*postfix$
+        key_evt_amqp.keymask_set ALL
 
 
 
