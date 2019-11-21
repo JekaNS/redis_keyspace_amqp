@@ -12,9 +12,9 @@ After loading, this module subscribes to internal keyspace events, connection to
 Format of AMQP message body is simple multiline string  with line endings "\n" and 3 values: Redis DB id, event name, key name.  
 Example:
 
-        0
-        expire
-        redis_key_name
+>0  
+>expire  
+>redis_key_name  
 
 If for some reason the AMQP message cannot be delivered, the module saves the events in to native RedisList structure as a fallback behavior. When the connection returns, all events from the fallback storage will be sent to the broker.  
 
